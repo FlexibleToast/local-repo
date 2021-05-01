@@ -1,0 +1,4 @@
+*.code-workspace
+*.swp
+inventory.yaml
+ansible.cfg
