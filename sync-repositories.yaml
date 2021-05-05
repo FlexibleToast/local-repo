@@ -6,6 +6,11 @@
 
   tasks:
 
+  - name: Check for rhel-7-server-rpms
+    assert:
+      that: "'rhel-7-server-rpms' in repos"
+      fail_msg: "Repos must include rhel-7-server-rpms to maintain base OS"
+
   - name: Set release version
     command:
       argv:

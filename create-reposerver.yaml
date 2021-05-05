@@ -1,0 +1,105 @@
+---
+- name: Create yum repository server
+  hosts: repository
+  become: yes
+  gather_facts: no
+
+  tasks:
+
+  - name: Check availability of rhel-7-server-rpms repo
+    assert:
+      that: "'rhel-7-server-rpms' in repos"
+      fail_msg: "Must include rhel-7-server-rpms to update host and install Apache"
+
+  - name: Create repos directory
+    file:
+      path: "{{ repo_path }}"
+      state: directory
+
+  - name: Import repo archives
+    unarchive:
+      src: "{{ archive_path }}/{{ item }}.tgz"
+      dest: "{{ repo_path }}"
+    loop: "{{ repos }}"
+
+  - name: Attach local rhel-7-server-rpms repo
+    copy:
+      dest: /etc/yum.repos.d/local.repo
+      content: |
+        [LocalRHEL7]
+        name=Locally hosted RHEL 7 server rpms
+        gpgcheck=1
+        gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+        enabled=1
+        baseurl=file://{{ repo_path }}/rhel-7-server-rpms
+
+  - name: Update host
+    yum:
+      name: '*'
+      state: latest
+      update_cache: yes
+    register: update_result
+
+  - name: Reboot host
+    reboot:
+    when: update_result.changed
+
+  - name: Install prereqs
+    yum:
+      name: "{{ item }}"
+      state: present
+    loop:
+    - httpd
+    - policycoreutils-python
+
+  - name: Enable httpd
+    service:
+      name: httpd
+      state: started
+      enabled: true
+
+  - name: Open httpd firewall ports
+    firewalld:
+      service: "{{ item }}"
+      immediate: yes
+      permanent: yes
+      state: enabled
+      zone: public
+    loop:
+    - http
+    - https
+
+  - name: Configure httpd to serve repos
+    template:
+      src: repository.conf
+      dest: /etc/httpd/conf.d/repository.conf
+      owner: root
+      group: root
+      mode: '644'
+    notify: restart httpd
+
+  - name: Configure ACL
+    acl:
+      path: "{{ repo_path }}"
+      entity: apache
+      etype: user
+      permissions: rwx
+      default: yes
+      recursive: yes
+      state: present
+
+  - name: Configure SELinux
+    sefcontext:
+      target: "{{ repo_path }}(/.*)?"
+      setype: httpd_sys_content_t
+      state: present
+
+  - name: Apply SELinux configuration
+    command: restorecon -ir {{ repo_path }}
+
+  handlers:
+
+  - name: restart httpd
+    service:
+      name: httpd
+      state: restarted
