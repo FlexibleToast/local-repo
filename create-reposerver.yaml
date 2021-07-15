@@ -13,13 +13,13 @@
 
   - name: Create repos directory
     file:
-      path: "{{ repo_path }}"
+      path: "{{ repo_srv_path }}"
       state: directory
 
   - name: Import repo archives
     unarchive:
       src: "{{ archive_path }}/{{ item }}.tgz"
-      dest: "{{ repo_path }}"
+      dest: "{{ repo_srv_path }}"
     loop: "{{ repos }}"
 
   - name: Attach local rhel-7-server-rpms repo
@@ -31,7 +31,7 @@
         gpgcheck=1
         gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
         enabled=1
-        baseurl=file://{{ repo_path }}/rhel-7-server-rpms
+        baseurl=file://{{ repo_srv_path }}/rhel-7-server-rpms
 
   - name: Update host
     yum:
@@ -80,7 +80,7 @@
 
   - name: Configure ACL
     acl:
-      path: "{{ repo_path }}"
+      path: "{{ repo_srv_path }}"
       entity: apache
       etype: user
       permissions: rwx
@@ -90,12 +90,12 @@
 
   - name: Configure SELinux
     sefcontext:
-      target: "{{ repo_path }}(/.*)?"
+      target: "{{ repo_srv_path }}(/.*)?"
       setype: httpd_sys_content_t
       state: present
 
   - name: Apply SELinux configuration
-    command: restorecon -ir {{ repo_path }}
+    command: restorecon -ir {{ repo_srv_path }}
 
   handlers:
 
