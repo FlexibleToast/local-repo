@@ -1,0 +1,23 @@
+- name: Attach client machines to local repository
+  hosts: clients
+  gather_facts: no
+  become: yes
+
+  tasks:
+
+  - name: Add repositories to clients
+    ansible.builtin.template:
+      dest: /etc/yum.repos.d/{{ item }}.repo
+      src: repository.repo.j2
+    loop: '{{ repos }}'
+
+  - name: Update clients
+    ansible.builtin.package:
+      name: '*'
+      state: latest
+      update_cache: yes
+    register: update_result
+
+  - name: Reboot clients
+    ansible.builtin.reboot:
+    when: update_result.changed

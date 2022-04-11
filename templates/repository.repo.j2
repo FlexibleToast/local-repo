@@ -1,0 +1,10 @@
+[Local-{{ item }}]
+name=Locally hosted {{ item }}
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+enabled=1
+{% if repo_srv_path is defined %}
+baseurl=file://{{ repo_srv_path }}/{{ item }}
+{% else %}
+baseurl=http://{{ repository_server }}/{{ item }}
+{% endif %}
