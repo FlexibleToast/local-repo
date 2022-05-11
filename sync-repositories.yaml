@@ -1,68 +1,70 @@
----
-- name: Sync repositories and prepare for export
+- name: Sync repositories to external host
   hosts: ext_repository
-  gather_facts: no
   become: yes
 
   tasks:
 
   - name: Check for rhel-7-server-rpms
-    assert:
+    ansible.builtin.assert:
       that: "'rhel-7-server-rpms' in repos"
       fail_msg: "Repos must include rhel-7-server-rpms to maintain base OS"
+    when: ansible_distribution_major_version == '7'
+
+  - name: Check for RHEL 8 rpms
+    ansible.builtin.assert:
+      that: item in repos
+      fail_msg: "Repos must include {{ item }}"
+    loop:
+    - rhel-8-for-x86_64-baseos-rpms
+    - rhel-8-for-x86_64-appstream-rpms
+    when: ansible_distribution_major_version == '8'
 
   - name: Set release version
-    command:
-      argv:
-      - subscription-manager
-      - release
-      - --set={{ release_version }}
-
-  - name: Install prereqs
-    yum:
-      name: "{{ item }}"
-      state: present
-    loop:
-    - createrepo
-    - deltarpm
-    - yum-utils
+    community.general.rhsm_release:
+      release: '{{ release_version }}'
+    when: release_version is defined
 
   - name: Enable repositories
-    command:
-      argv:
-      - subscription-manager
-      - repos
-      - --enable={{ item }}
-    loop: "{{ repos }}"
+    community.general.rhsm_repository:
+      name:  '{{ repos }}'
 
-  - name: Sync the repositories
-    command:
-      argv:
+  - name: Install prereqs
+    ansible.builtin.package:
+      name: '{{ packages }}'
+      state: present
+    vars:
+      packages:
+      - createrepo
+      - yum-utils
+
+  - name: Create reposync arguments
+    ansible.builtin.set_fact:
+      reposync_argv:
       - reposync
-      - "{% if cleanup | default(false) %}--delete{% endif %}"
-      - --downloadcomps
+      - -m # download-comps
       - --download-metadata
       - --gpgcheck
-      - "{% if newest | default(false) %}--newest-only{% endif %}"
-      - --plugins
-      - --repoid={{ item }}
-      - --download_path={{ repo_path }}
-    loop: "{{ repos }}"
+      - -p # download-path
+      - '{{ repo_path }}'
 
-  - name: Create/update repositories
-    command:
-      argv:
-      - createrepo
-      - --groupfile
-      - comps.xml
-      - --quiet
-      - --update
-      - "{{ repo_path }}/{{ item }}"
-      chdir: "{{ repo_path }}/{{ item }}"
-    loop: "{{ repos }}"
+  - name: Check for delete
+    ansible.builtin.set_fact:
+      reposync_argv: "{{ reposync_argv }} + ['--delete']"
+    when: delete | default(false)
+
+  - name: Check for newest only
+    ansible.builtin.set_fact:
+      reposync_argv: "{{ reposync_argv }} + ['--newest-only']"
+    when: newest | default(false)
+
+  - name: Sync the repositories
+    ansible.builtin.command:
+      argv: "{{ reposync_argv }} + ['--repoid={{ item }}']"
+    loop: '{{ repos }}'
 
   - name: Tar repos for export
-    archive:
+    ansible.builtin.archive:
       path: "{{ repo_path }}/{{ item }}"
       dest: "{{ output_path }}/{{ item }}.tgz"
-    loop: "{{ repos }}"
+    loop: '{{ repos }}'
+    when: export | default(false)

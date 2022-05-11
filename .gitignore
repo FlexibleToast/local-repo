@@ -1,4 +1,6 @@
 *.code-workspace
 *.swp
-inventory.yaml
+*.log
+inventory*.yaml
 ansible.cfg
+setup.json

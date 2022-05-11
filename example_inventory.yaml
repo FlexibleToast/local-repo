@@ -1,0 +1,33 @@
+all:
+  children:
+    ext_repository:
+      hosts:
+        aap-disconnected:
+          ansible_host: aap-disconnected.lan
+          ansible_user: root
+          repo_path: '/repos'
+          delete: false
+          newest: false
+    repository:
+      hosts:
+        aap-disconnected:
+          repo_srv_path: '/repos'
+    clients:
+      hosts:
+        aap-controller:
+          ansible_controller: aap-controller.lan
+          repos:
+          - rhel-8-for-x86_64-baseos-rpms
+          - rhel-8-for-x86_64-appstream-rpms
+        aap-hub:
+          ansible_host: aap-hub.lan
+          repos:
+          - rhel-8-for-x86_64-baseos-rpms
+          - rhel-8-for-x86_64-appstream-rpms
+          - automation-hub-4.2-for-rhel-8-x86_64-rpms
+  vars:
+    repository_server: aap-disconnected.lan
+    repos:
+    - rhel-8-for-x86_64-baseos-rpms
+    - rhel-8-for-x86_64-appstream-rpms
+    - automation-hub-4.2-for-rhel-8-x86_64-rpms

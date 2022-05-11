@@ -1,66 +1,92 @@
----
 - name: Create yum repository server
   hosts: repository
   become: yes
-  gather_facts: no
 
   tasks:
 
   - name: Check availability of rhel-7-server-rpms repo
-    assert:
+    ansible.builtin.assert:
       that: "'rhel-7-server-rpms' in repos"
       fail_msg: "Must include rhel-7-server-rpms to update host and install Apache"
+    when: ansible_distribution_major_version == '7'
+
+  - name: Check for RHEL 8 rpms
+    ansible.builtin.assert:
+      that: item in repos
+      fail_msg: "Repos must include {{ item }}"
+    loop:
+    - rhel-8-for-x86_64-baseos-rpms
+    - rhel-8-for-x86_64-appstream-rpms
+    when: ansible_distribution_major_version == '8'
 
   - name: Create repos directory
-    file:
+    ansible.builtin.file:
       path: "{{ repo_srv_path }}"
       state: directory
 
   - name: Import repo archives
-    unarchive:
+    ansible.builtin.unarchive:
       src: "{{ archive_path }}/{{ item }}.tgz"
       dest: "{{ repo_srv_path }}"
     loop: "{{ repos }}"
+    when: archive_path is defined
 
   - name: Attach local rhel-7-server-rpms repo
-    copy:
-      dest: /etc/yum.repos.d/local.repo
-      content: |
-        [LocalRHEL7]
-        name=Locally hosted RHEL 7 server rpms
-        gpgcheck=1
-        gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
-        enabled=1
-        baseurl=file://{{ repo_srv_path }}/rhel-7-server-rpms
+    ansible.builtin.template:
+      dest: /etc/yum.repos.d/{{ item }}.repo
+      src: repository.repo.j2
+    loop:
+    - rhel-7-server-rpms
+    when: ansible_distribution_major_version == '7'
+
+  - name: Attach local RHEL 8 repos
+    ansible.builtin.template:
+      dest: /etc/yum.repos.d/{{ item }}.repo
+      src: repository.repo.j2
+    loop:
+    - rhel-8-for-x86_64-baseos-rpms
+    - rhel-8-for-x86_64-appstream-rpms
+    when: ansible_distribution_major_version == '8'
 
   - name: Update host
-    yum:
+    ansible.builtin.package:
       name: '*'
       state: latest
       update_cache: yes
     register: update_result
 
   - name: Reboot host
-    reboot:
+    ansible.builtin.reboot:
     when: update_result.changed
 
-  - name: Install prereqs
-    yum:
-      name: "{{ item }}"
+  - name: Install RHEL 7 prereqs
+    ansible.builtin.package:
+      name: '{{ packages }}'
       state: present
-    loop:
-    - httpd
-    - policycoreutils-python
+    vars:
+      packages:
+      - httpd
+      - policycoreutils-python
+    when: ansible_distribution_major_version == '7'
+
+  - name: Install RHEL 8 prereqs
+    ansible.builtin.package:
+      name: '{{ packages }}'
+      state: present
+    vars:
+      packages:
+      - httpd
+    when: ansible_distribution_major_version == '8'
 
   - name: Enable httpd
-    service:
+    ansible.builtin.service:
       name: httpd
       state: started
       enabled: true
 
   - name: Open httpd firewall ports
-    firewalld:
-      service: "{{ item }}"
+    ansible.posix.firewalld:
+      service: '{{ item }}'
       immediate: yes
       permanent: yes
       state: enabled
@@ -70,8 +96,8 @@
     - https
 
   - name: Configure httpd to serve repos
-    template:
-      src: repository.conf
+    ansible.builtin.template:
+      src: repository.conf.j2
       dest: /etc/httpd/conf.d/repository.conf
       owner: root
       group: root
@@ -79,8 +105,8 @@
     notify: restart httpd
 
   - name: Configure ACL
-    acl:
-      path: "{{ repo_srv_path }}"
+    ansible.builtin.acl:
+      path: '{{ repo_srv_path }}'
       entity: apache
       etype: user
       permissions: rwx
@@ -89,17 +115,17 @@
       state: present
 
   - name: Configure SELinux
-    sefcontext:
+    ansible.builtin.sefcontext:
       target: "{{ repo_srv_path }}(/.*)?"
       setype: httpd_sys_content_t
       state: present
 
   - name: Apply SELinux configuration
-    command: restorecon -ir {{ repo_srv_path }}
+    ansible.builtin.command: restorecon -ir {{ repo_srv_path }}
 
   handlers:
 
   - name: restart httpd
-    service:
+    ansible.builtin.service:
       name: httpd
       state: restarted
